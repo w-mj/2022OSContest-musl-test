@@ -67,34 +67,51 @@ int main(int argc, char *argv[])
 	sigaddset(&set, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &set, 0);
 	signal(SIGCHLD, handler);
+	t_printf("========== START %s ==========\n", argv[0]);
 	pid = start(wrap, argv);
+	int err = 0;
 	if (pid == -1) {
 		t_error("%s fork failed: %s\n", argv[0], strerror(errno));
 		t_printf("FAIL %s [internal]\n", argv[0]);
-		return -1;
+		err = 1;
 	}
 	if (sigtimedwait(&set, 0, &(struct timespec){timeoutsec,0}) == -1) {
 		if (errno == EAGAIN)
 			timeout = 1;
-		else
+		else {
 			t_error("%s sigtimedwait failed: %s\n", argv[0], strerror(errno));
-		if (kill(pid, SIGKILL) == -1)
+			err = 1;
+		}
+		if (kill(pid, SIGKILL) == -1) {
 			t_error("%s kill failed: %s\n", argv[0], strerror(errno));
+			err = 1;
+		}
 	}
 	if (waitpid(pid, &status, 0) != pid) {
 		t_error("%s waitpid failed: %s\n", argv[0], strerror(errno));
 		t_printf("FAIL %s [internal]\n", argv[0]);
-		return -1;
+		err = 1;
 	}
 	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 0)
-			return t_status;
-		t_printf("FAIL %s [status %d]\n", argv[0], WEXITSTATUS(status));
+		if (WEXITSTATUS(status) != 0) {
+			t_printf("FAIL %s [status %d]\n", argv[0], WEXITSTATUS(status));
+			err = 1;
+		}
 	} else if (timeout) {
 		t_printf("FAIL %s [timed out]\n", argv[0]);
+		err = 1;
 	} else if (WIFSIGNALED(status)) {
 		t_printf("FAIL %s [signal %s]\n", argv[0], strsignal(WTERMSIG(status)));
-	} else
+		err = 1;
+	} else {
 		t_printf("FAIL %s [unknown]\n", argv[0]);
+		err = 1;
+	}
+
+
+	if (err == 0) {
+		t_printf("Pass!\n");
+	}
+	t_printf("========== END %s ==========\n", argv[0]);
 	return 1;
 }

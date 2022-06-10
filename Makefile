@@ -1,5 +1,6 @@
 B:=src
 SRCS:=$(sort $(wildcard src/*/*.c))
+$(info SRCS is $(SRCS))
 OBJS:=$(SRCS:src/%.c=$(B)/%.o)
 LOBJS:=$(SRCS:src/%.c=$(B)/%.lo)
 DIRS:=$(patsubst src/%/,%,$(sort $(dir $(SRCS))))
@@ -9,7 +10,8 @@ CFLAGS:=-I$(B)/common -Isrc/common
 LDLIBS:=$(B)/common/libtest.a
 AR = $(CROSS_COMPILE)ar
 RANLIB = $(CROSS_COMPILE)ranlib
-RUN_TEST = $(RUN_WRAP) $(B)/common/runtest.exe -w '$(RUN_WRAP)'
+#RUN_TEST = $(RUN_WRAP) $(B)/common/runtest.exe -w '$(RUN_WRAP)'
+RUN_TEST = $(B)/common/runtest.exe
 
 all:
 %.mk:
@@ -39,7 +41,7 @@ config.mak:
 -include config.mak
 
 define default_template
-$(1).BINS_TEMPL:=bin.exe bin-static.exe
+$(1).BINS_TEMPL:=bin.exe 
 $(1).NAMES:=$$(filter $(1)/%,$$(NAMES))
 $(1).OBJS:=$$($(1).NAMES:%=$(B)/%.o)
 endef
@@ -81,7 +83,7 @@ $(B)/$(1)/cleanerr:
 $(B)/$(1)/clean:
 	rm -f $$(filter $(B)/$(1)/%,$$(OBJS) $$(LOBJS) $$(BINS) $$(LIBS)) $(B)/$(1)/*.err
 $(B)/$(1)/REPORT: $$($(1).ERRS)
-	cat $(B)/$(1)/*.err >$$@
+
 run: $(B)/$(1)/run
 $(B)/REPORT: $(B)/$(1)/REPORT
 .PHONY: $(B)/$(1)/all $(B)/$(1)/clean
@@ -127,17 +129,18 @@ $(B)/REPORT:
 	cat $^ >$@
 
 $(B)/%.o:: src/%.c
-	$(CC) $(CFLAGS) $($*.CFLAGS) -c -o $@ $< 2>$@.err || echo BUILDERROR $@; cat $@.err
+	-$(CC) $(CFLAGS) $($*.CFLAGS) -c -o $@ $< 
 $(B)/%.s:: src/%.c
-	$(CC) $(CFLAGS) $($*.CFLAGS) -S -o $@ $< || echo BUILDERROR $@; cat $@.err
+	-$(CC) $(CFLAGS) $($*.CFLAGS) -S -o $@ $< 
 $(B)/%.lo:: src/%.c
-	$(CC) $(CFLAGS) $($*.CFLAGS) -fPIC -DSHARED -c -o $@ $< 2>$@.err || echo BUILDERROR $@; cat $@.err
+	-$(CC) $(CFLAGS) $($*.CFLAGS) -fPIC -RED -c -o $@ $< 
 $(B)/%.so: $(B)/%.lo
-	$(CC) -shared $(LDFLAGS) $($*.so.LDFLAGS) -o $@ $(sort $< $($*.so.LOBJS)) $(LDLIBS) $($*.so.LDLIBS) 2>$@.err || echo BUILDERROR $@; cat $@.err
+	-$(CC) -shared $(LDFLAGS) $($*.so.LDFLAGS) -o $@ $(sort $< $($*.so.LOBJS)) $(LDLIBS) $($*.so.LDLIBS)
 $(B)/%-static.exe: $(B)/%.o
-	$(CC) -static $(LDFLAGS) $($*-static.LDFLAGS) -o $@ $(sort $< $($*-static.OBJS)) $(LDLIBS) $($*-static.LDLIBS) 2>$@.ld.err || echo BUILDERROR $@; cat $@.ld.err
+	@#$(CC) -static $(LDFLAGS) $($*-static.LDFLAGS) -o $@ $(sort $< $($*-static.OBJS)) $(LDLIBS) $($*-static.LDLIBS)
 $(B)/%.exe: $(B)/%.o
-	$(CC) $(LDFLAGS) $($*.LDFLAGS) -o $@ $(sort $< $($*.OBJS)) $(LDLIBS) $($*.LDLIBS) 2>$@.ld.err || echo BUILDERROR $@; cat $@.ld.err
+	-$(CC) -static $(LDFLAGS) $($*-static.LDFLAGS) -o $@ $(sort $< $($*-static.OBJS)) $(LDLIBS) $($*-static.LDLIBS)
+	@# $(CC) $(LDFLAGS) $($*.LDFLAGS) -o $@ $(sort $< $($*.OBJS)) $(LDLIBS) $($*.LDLIBS)
 
 %.o.err: %.o
 	touch $@
@@ -148,7 +151,7 @@ $(B)/%.exe: $(B)/%.o
 %.ld.err: %.exe
 	touch $@
 %.err: %.exe
-	$(RUN_TEST) $< >$@ || true
+	@ echo $(RUN_TEST) $< >> test-cmd.txt
 
 .PHONY: all run clean cleanall
 
