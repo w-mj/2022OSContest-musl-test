@@ -5,3 +5,8 @@
 *.exe
 config.mak
 REPORT
+*.obj
+test
+entry.h
+run-all.sh
+.vscode

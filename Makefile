@@ -1,157 +1,97 @@
-B:=src
-SRCS:=$(sort $(wildcard src/*/*.c))
-$(info SRCS is $(SRCS))
-OBJS:=$(SRCS:src/%.c=$(B)/%.o)
-LOBJS:=$(SRCS:src/%.c=$(B)/%.lo)
-DIRS:=$(patsubst src/%/,%,$(sort $(dir $(SRCS))))
-BDIRS:=$(DIRS:%=$(B)/%)
-NAMES:=$(SRCS:src/%.c=%)
-CFLAGS:=-I$(B)/common -Isrc/common
-LDLIBS:=$(B)/common/libtest.a
-AR = $(CROSS_COMPILE)ar
-RANLIB = $(CROSS_COMPILE)ranlib
-#RUN_TEST = $(RUN_WRAP) $(B)/common/runtest.exe -w '$(RUN_WRAP)'
-RUN_TEST = $(B)/common/runtest.exe
+STATIC_EXES = $(shell cat static.txt)
+STATIC_OBJS = $(STATIC_EXES:%.exe=%.obj)
+STATIC_PREFIXED_OBJS = $(STATIC_EXES:%.exe=%_prefixed.obj)
 
-all:
-%.mk:
-# turn off evil implicit rules
-.SUFFIXES:
-%: %.o
-%: %.c
-%: %.cc
-%: %.C
-%: %.cpp
-%: %.p
-%: %.f
-%: %.F
-%: %.r
-%: %.s
-%: %.S
-%: %.mod
-%: %.sh
-%: %,v
-%: RCS/%,v
-%: RCS/%
-%: s.%
-%: SCCS/s.%
+DYNAMIC_EXES = $(shell cat dynamic.txt)
+DYNAMIC_OBJS = $(DYNAMIC_EXES:%.exe=%.obj)
+DYNAMIC_PREFIXED_OBJS = $(DYNAMIC_EXES:%.exe=%_prefixed.obj)
 
-config.mak:
-	cp config.mak.def $@
--include config.mak
+COMMON_SRC_FILES = fdfill.c memfill.c mtest.c path.c print.c rand.c setrlim.c utf8.c vmfill.c
+COMMON_SRCS = $(addprefix src/common/,  $(COMMON_SRC_FILES))
+COMMON_OBJS = $(COMMON_SRCS:%.c=%.obj)
 
-define default_template
-$(1).BINS_TEMPL:=bin.exe 
-$(1).NAMES:=$$(filter $(1)/%,$$(NAMES))
-$(1).OBJS:=$$($(1).NAMES:%=$(B)/%.o)
-endef
-$(foreach d,$(DIRS),$(eval $(call default_template,$(d))))
-common.BINS_TEMPL:=
-api.BINS_TEMPL:=
-math.BINS_TEMPL:=bin.exe
+DSO_SRCS = src/functional/tls_align_dso.c src/functional/tls_init_dso.c src/functional/dlopen_dso.c src/regression/tls_get_new-dtv_dso.c
+DSO_SOS = $(DSO_SRCS:%.c=%.so)
 
-define template
-D:=$$(patsubst %/,%,$$(dir $(1)))
-N:=$(1)
-$(1).BINS := $$($$(D).BINS_TEMPL:bin%=$(B)/$(1)%)
--include src/$(1).mk
-#$$(warning D $$(D) N $$(N) B $$($(1).BINS))
-$(B)/$(1).exe $(B)/$(1)-static.exe: $$($(1).OBJS)
-$(B)/$(1).so: $$($(1).LOBJS)
-# make sure dynamic and static binaries are not run parallel (matters for some tests eg ipc)
-$(B)/$(1)-static.err: $(B)/$(1).err
-endef
-$(foreach n,$(NAMES),$(eval $(call template,$(n))))
+# PREFIX=riscv64-buildroot-linux-musl-
+CC=$(PREFIX)gcc
+OBJCOPY=$(PREFIX)objcopy
 
-BINS:=$(foreach n,$(NAMES),$($(n).BINS)) $(B)/api/main.exe
-LIBS:=$(foreach n,$(NAMES),$($(n).LIBS)) $(B)/common/runtest.exe
-ERRS:=$(BINS:%.exe=%.err)
+CFLAGS += -pipe -std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wno-unused-function -Wno-missing-braces -Wno-unused -Wno-overflow
+CFLAGS += -Wno-unknown-pragmas -fno-builtin -frounding-math
+CFLAGS += -Werror=implicit-function-declaration -Werror=implicit-int -Werror=pointer-sign -Werror=pointer-arith
+CFLAGS += -Os -s
+CFLAGS += -Isrc/common/
+LDLIBS += -Os -s -lpthread -lm -lrt
 
-debug:
-	@echo NAMES $(NAMES)
-	@echo BINS $(BINS)
-	@echo LIBS $(LIBS)
-	@echo ERRS $(ERRS)
-	@echo DIRS $(DIRS)
+# CFLAGS += -D_FILE_OFFSET_BITS=64
+# LDLIBS += -lcrypt -ldl -lresolv -lutil -lpthread
 
-define target_template
-$(1).ERRS:=$$(filter $(B)/$(1)/%,$$(ERRS))
-$(B)/$(1)/all: $(B)/$(1)/REPORT
-$(B)/$(1)/run: $(B)/$(1)/cleanerr $(B)/$(1)/REPORT
-$(B)/$(1)/cleanerr:
-	rm -f $$(filter-out $(B)/$(1)/%-static.err,$$($(1).ERRS))
-$(B)/$(1)/clean:
-	rm -f $$(filter $(B)/$(1)/%,$$(OBJS) $$(LOBJS) $$(BINS) $$(LIBS)) $(B)/$(1)/*.err
-$(B)/$(1)/REPORT: $$($(1).ERRS)
+all: static dynamic runtest
 
-run: $(B)/$(1)/run
-$(B)/REPORT: $(B)/$(1)/REPORT
-.PHONY: $(B)/$(1)/all $(B)/$(1)/clean
-endef
-$(foreach d,$(DIRS),$(eval $(call target_template,$(d))))
+so: $(DSO_SOS)
 
-$(B)/common/libtest.a: $(common.OBJS)
-	rm -f $@
-	$(AR) rc $@ $^
-	$(RANLIB) $@
+entry.c: entry.h
 
-$(B)/common/all: $(B)/common/runtest.exe
+entry.h: dynamic.txt static.txt
+	printf "#ifdef STATIC\n" >> entry.h
+	cat static.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "int %s_main(int, char **);\n" BB >> entry.h
+	printf "struct {const char *name; int (*func)(int, char**);} table [] = {\n" >> entry.h
+	cat static.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "\t{\"%s\", %s_main},\n" BB BB >> entry.h
+	printf "\t{0, 0}\n" >> entry.h
+	printf "};\n" >> entry.h
+	printf "#endif\n\n" >> entry.h
 
-$(ERRS): $(B)/common/runtest.exe | $(BDIRS)
-$(BINS) $(LIBS): $(B)/common/libtest.a
-$(OBJS): src/common/test.h | $(BDIRS)
-$(BDIRS):
-	mkdir -p $@
+	printf "#ifdef DYNAMIC\n" >> entry.h
+	cat dynamic.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "int %s_main(int, char **);\n" BB >> entry.h
+	printf "struct {const char *name; int (*func)(int, char**);} table [] = {\n" >> entry.h
+	cat dynamic.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "\t{\"%s\", %s_main},\n" BB BB >> entry.h
+	printf "\t{0, 0}\n" >> entry.h
+	printf "};\n" >> entry.h
+	printf "#endif\n\n" >> entry.h
 
-$(B)/common/options.h: src/common/options.h.in
-	$(CC) -E - <$< | awk ' \
-		/optiongroups_unistd_end/ {s=1; next} \
-		!s || !NF || /^#/ {next} \
-		!a {a=$$1; if(NF==1)next} \
-		{print "#define "a" "$$NF; a=""}' >$@.tmp
-	mv $@.tmp $@
+runtest: src/common/runtest.obj $(COMMON_OBJS)
+	$(CC) $(LDFLAGS) $^ -static -o runtest.exe
 
-$(B)/common/mtest.o: src/common/mtest.h
-$(math.OBJS): src/common/mtest.h
+static: $(COMMON_OBJS) $(STATIC_PREFIXED_OBJS) entry.c src/functional/tls_align_dso.obj
+	$(CC) $(LDFLAGS) -DSTATIC $^ -static -o entry-static.exe
 
-$(B)/api/main.exe: $(api.OBJS)
-api/main.OBJS:=$(api.OBJS)
-$(api.OBJS):$(B)/common/options.h
-$(api.OBJS):CFLAGS+=-pedantic-errors -Werror -Wno-unused -D_XOPEN_SOURCE=700
+dynamic: $(DYNAMIC_PREFIXED_OBJS) $(DSO_SOS) $(COMMON_OBJS) entry.c
+	$(CC) $(LDFLAGS) entry.c -DDYNAMIC $(COMMON_OBJS) $(DYNAMIC_PREFIXED_OBJS) -Lsrc/functional -Lsrc/regression -ltls_align_dso -ltls_init_dso -ldlopen_dso -ltls_get_new-dtv_dso -o entry-dynamic.exe
 
-all run: $(B)/REPORT
-	grep FAIL $< || echo PASS
+common: $(COMMON_OBJS)
+
+%_prefixed.obj: %.obj
+	$(OBJCOPY) --redefine-sym main=$(subst -,_,$(notdir $(basename $^)))_main $^ $@
+
+%.obj : %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
+
+%.so : %.c
+	$(CC) $(CFLAGS) -shared -fPIC $^ -o $(dir $@)/lib$(notdir $@)
+
+run-all.sh: static dynamic runtest
+	cat static.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-static.exe %s\n" BB > run-all.sh
+	cat dynamic.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-dynamic.exe %s\n" BB >> run-all.sh
+	chmod +x run-all.sh
+
+run: run-all.sh
+	- ./run-all.sh
+
+disk all:
+	mkdir -p disk
+	cp entry-dynamic.exe disk
+	cp entry-static.exe disk
+	cp runtest.exe disk
+	cp src/functional/*.so src/regression/*.so disk
+	cp /opt/riscv64--musl--bleeding-edge-2020.08-1/riscv64-buildroot-linux-musl/sysroot/lib64/libc.so disk
+	ls -lh disk/
+
+
 clean:
-	rm -f $(OBJS) $(BINS) $(LIBS) $(B)/common/libtest.a $(B)/common/runtest.exe $(B)/common/options.h $(B)/*/*.err
-cleanall: clean
-	rm -f $(B)/REPORT $(B)/*/REPORT
-$(B)/REPORT:
-	cat $^ >$@
-
-$(B)/%.o:: src/%.c
-	-$(CC) $(CFLAGS) $($*.CFLAGS) -c -o $@ $< 
-$(B)/%.s:: src/%.c
-	-$(CC) $(CFLAGS) $($*.CFLAGS) -S -o $@ $< 
-$(B)/%.lo:: src/%.c
-	-$(CC) $(CFLAGS) $($*.CFLAGS) -fPIC -RED -c -o $@ $< 
-$(B)/%.so: $(B)/%.lo
-	-$(CC) -shared $(LDFLAGS) $($*.so.LDFLAGS) -o $@ $(sort $< $($*.so.LOBJS)) $(LDLIBS) $($*.so.LDLIBS)
-$(B)/%-static.exe: $(B)/%.o
-	@#$(CC) -static $(LDFLAGS) $($*-static.LDFLAGS) -o $@ $(sort $< $($*-static.OBJS)) $(LDLIBS) $($*-static.LDLIBS)
-$(B)/%.exe: $(B)/%.o
-	-$(CC) -static $(LDFLAGS) $($*-static.LDFLAGS) -o $@ $(sort $< $($*-static.OBJS)) $(LDLIBS) $($*-static.LDLIBS)
-	@# $(CC) $(LDFLAGS) $($*.LDFLAGS) -o $@ $(sort $< $($*.OBJS)) $(LDLIBS) $($*.LDLIBS)
-
-%.o.err: %.o
-	touch $@
-%.lo.err: %.lo
-	touch $@
-%.so.err: %.so
-	touch $@
-%.ld.err: %.exe
-	touch $@
-%.err: %.exe
-	@ echo $(RUN_TEST) $< >> test-cmd.txt
-
-.PHONY: all run clean cleanall
-
+	- find src -name '*.obj' | xargs -t rm
+	- find src -name '*.exe' | xargs -t rm
+	- find src -name '*.so' | xargs -t rm
+	- rm *.exe
+	- rm entry.h
+	- rm -rf disk

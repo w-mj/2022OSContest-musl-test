@@ -1,3 +1,2 @@
-1. 修改build.sh中的CC
-2. 运行./build.sh
-3. cd execs && ./test-all.sh
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:src/functional:src/regression
+make CC=musl-gcc run
