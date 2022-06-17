@@ -1,3 +1,10 @@
+MUSL_LIB?=/opt/riscv64--musl--bleeding-edge-2020.08-1/riscv64-buildroot-linux-musl/sysroot/lib64/
+PREFIX?=riscv64-buildroot-linux-musl-
+CC=$(PREFIX)gcc
+OBJCOPY=$(PREFIX)objcopy
+# CC=musl-gcc
+# OBJCOPY=objcopy
+
 STATIC_EXES = $(shell cat static.txt)
 STATIC_OBJS = $(STATIC_EXES:%.exe=%.obj)
 STATIC_PREFIXED_OBJS = $(STATIC_EXES:%.exe=%_prefixed.obj)
@@ -13,9 +20,6 @@ COMMON_OBJS = $(COMMON_SRCS:%.c=%.obj)
 DSO_SRCS = src/functional/tls_align_dso.c src/functional/tls_init_dso.c src/functional/dlopen_dso.c src/regression/tls_get_new-dtv_dso.c
 DSO_SOS = $(DSO_SRCS:%.c=%.so)
 
-# PREFIX=riscv64-buildroot-linux-musl-
-CC=$(PREFIX)gcc
-OBJCOPY=$(PREFIX)objcopy
 
 CFLAGS += -pipe -std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wno-unused-function -Wno-missing-braces -Wno-unused -Wno-overflow
 CFLAGS += -Wno-unknown-pragmas -fno-builtin -frounding-math
@@ -84,7 +88,8 @@ disk all:
 	cp entry-static.exe disk
 	cp runtest.exe disk
 	cp src/functional/*.so src/regression/*.so disk
-	cp /opt/riscv64--musl--bleeding-edge-2020.08-1/riscv64-buildroot-linux-musl/sysroot/lib64/libc.so disk
+	cp $(MUSL_LIB)/libc.so disk
+	cp run-all.sh disk
 	ls -lh disk/
 
 

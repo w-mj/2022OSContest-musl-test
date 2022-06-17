@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 	sigaddset(&set, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &set, 0);
 	signal(SIGCHLD, handler);
-	t_printf("========== START %s ==========\n", argv[0]);
+	t_printf("========== START %s %s ==========\n", wrap, argv[0]);
 	pid = start(wrap, argv);
 	int err = 0;
 	if (pid == -1) {
@@ -112,6 +112,6 @@ int main(int argc, char *argv[])
 	if (err == 0) {
 		t_printf("Pass!\n");
 	}
-	t_printf("========== END %s ==========\n", argv[0]);
+	t_printf("========== END %s %s ==========\n", wrap, argv[0]);
 	return 1;
 }
