@@ -75,21 +75,23 @@ common: $(COMMON_OBJS)
 	$(CC) $(CFLAGS) -shared -fPIC $^ -o $(dir $@)/lib$(notdir $@)
 
 run-all.sh: static dynamic runtest
-	cat static.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-static.exe %s\n" BB > run-all.sh
-	cat dynamic.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-dynamic.exe %s\n" BB >> run-all.sh
-	chmod +x run-all.sh
+	cat static.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-static.exe %s\n" BB > run-static.sh
+	cat dynamic.txt | xargs -I AA basename AA .exe | sed 's/-/_/g' | xargs -I BB printf "./runtest.exe -w entry-dynamic.exe %s\n" BB > run-dynamic.sh
+	echo "./run-static.sh" > run-all.sh
+	echo "./run-dynamic.sh" >> run-all.sh
+	chmod +x run-*.sh
 
 run: run-all.sh
 	- ./run-all.sh
 
-disk all:
+disk: run-all.sh
 	mkdir -p disk
 	cp entry-dynamic.exe disk
 	cp entry-static.exe disk
 	cp runtest.exe disk
 	cp src/functional/*.so src/regression/*.so disk
 	cp $(MUSL_LIB)/libc.so disk
-	cp run-all.sh disk
+	cp run-*.sh disk
 	ls -lh disk/
 
 
@@ -100,3 +102,4 @@ clean:
 	- rm *.exe
 	- rm entry.h
 	- rm -rf disk
+	- rm run-*.sh

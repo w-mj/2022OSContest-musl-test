@@ -1,7 +1,0 @@
-Riscv交叉编译：
-make PREFIX=riscv64-buildroot-linux-musl-
-
-X86本机测试：
-1. export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:src/functional:src/regression
-2. 修改Makefile中CC=musl-gcc，OBJCOPY=objcopy
-3. make run
